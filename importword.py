@@ -8,9 +8,9 @@ DB_NAME = "vocabulario.db"
 CSV_FILE = "words.csv"
 
 def importar_palabras():
-    print("--- INICIANDO IMPORTACIÓN (Lógica Correcta) ---")
+    print("--- INICIANDO IMPORTACIÓN (Columna word_id) ---")
 
-    # 1. Conectar
+    # 1. Conectar/Crear base de datos
     try:
         conn = sqlite3.connect(DB_NAME)
         cursor = conn.cursor()
@@ -19,20 +19,20 @@ def importar_palabras():
         print(f"❌ Error al conectar base de datos: {e}")
         return
 
-    # 2. Crear tabla (Sin default en modificated)
+    # 2. Crear tabla 'words' (Ahora con word_id)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS words (
-            id INTEGER PRIMARY KEY,
+            word_id INTEGER PRIMARY KEY,  -- Nombre cambiado
             word TEXT NOT NULL,
             definition TEXT,
             usage_example TEXT,
             status INTEGER DEFAULT 0,
             created DATETIME DEFAULT CURRENT_TIMESTAMP,
-            modificated DATETIME -- Será NULL por defecto
+            modificated DATETIME -- NULL por defecto
         )
     """)
     conn.commit()
-    print("✅ Tabla 'words' verificada.")
+    print("✅ Tabla 'words' verificada (con columna word_id).")
 
     # 3. Procesar CSV
     if not os.path.exists(CSV_FILE):
@@ -45,6 +45,7 @@ def importar_palabras():
                 
                 print("📂 Procesando filas...")
                 for row in reader:
+                    # Validar que la fila tenga datos suficientes
                     if len(row) >= 4:
                         w_id = row[0]
                         word = row[1]
@@ -55,15 +56,12 @@ def importar_palabras():
                         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
                         # LÓGICA DE UPSERT:
-                        # VALUES (?, ?, ?, ?, 0, NULL): 
-                        #    - Al crear, status es 0 y modificated es NULL (correcto).
-                        # ON CONFLICT(id) DO UPDATE SET ... modificated = ?:
-                        #    - Al actualizar, cambiamos el texto y ponemos fecha en modificated.
-                        
+                        # Si es NUEVO: word_id=?, status=0, modificated=NULL
+                        # Si EXISTE (conflicto en word_id): actualizamos texto y modificated=FECHA
                         cursor.execute("""
-                            INSERT INTO words (id, word, definition, usage_example, status, modificated)
+                            INSERT INTO words (word_id, word, definition, usage_example, status, modificated)
                             VALUES (?, ?, ?, ?, 0, NULL)
-                            ON CONFLICT(id) DO UPDATE SET
+                            ON CONFLICT(word_id) DO UPDATE SET
                                 word = excluded.word,
                                 definition = excluded.definition,
                                 usage_example = excluded.usage_example,
@@ -74,13 +72,11 @@ def importar_palabras():
                 
                 conn.commit()
                 print(f"✅ ÉXITO: {count} registros procesados.")
-                print("   (Nuevos tienen modificated=NULL. Existentes tienen fecha actual).")
 
         except Exception as e:
             print(f"❌ Error leyendo CSV: {e}")
 
     conn.close()
-    input("\nPresiona ENTER para salir...")
 
 if __name__ == "__main__":
     importar_palabras()
